@@ -124,25 +124,27 @@ class _LoginPageState extends State<LoginPage> {
       ).timeout(const Duration(seconds: 15));
 
       final data = jsonDecode(response.body);
-      if (response.statusCode == 200 && data['status'] == 'success') {
+      if (response.statusCode == 200 && (data['status'] == 'success' || data['success'] == true)) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('udid', _udidController.text.trim());
         await prefs.setString('key', _keyController.text.trim());
 
         if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
+        
+        // CORREÇÃO: Navegação explícita para a HomePage
+        Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
             builder: (context) => HomePage(
               udid: _udidController.text.trim(),
               licenseKey: _keyController.text.trim(),
             ),
           ),
+          (Route<dynamic> route) => false,
         );
       } else {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(data['message'] ?? 'Erro no login')),
+          SnackBar(content: Text(data['message'] ?? 'Chave inválida ou expirada')),
         );
       }
     } catch (e) {
@@ -278,7 +280,10 @@ class _HomePageState extends State<HomePage> {
               final prefs = await SharedPreferences.getInstance();
               await prefs.clear();
               if (!mounted) return;
-              Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginPage()));
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => const LoginPage()),
+                (Route<dynamic> route) => false,
+              );
             },
           )
         ],
@@ -317,8 +322,12 @@ class ServersTab extends StatelessWidget {
 
   Future<void> _launchURL(String url) async {
     final Uri uri = Uri.parse(url);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      throw Exception('Could not launch $url');
+    try {
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        throw Exception('Could not launch $url');
+      }
+    } catch (e) {
+      debugPrint('Error launching URL: $e');
     }
   }
 
@@ -340,6 +349,9 @@ class ServersTab extends StatelessWidget {
           decoration: BoxDecoration(
             gradient: const LinearGradient(colors: [Color(0xFF9C27B0), Color(0xFF4A00E0)]),
             borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(color: const Color(0xFF9C27B0).withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))
+            ]
           ),
           child: Column(
             children: [
@@ -351,6 +363,21 @@ class ServersTab extends StatelessWidget {
             ],
           ),
         ),
+        const SizedBox(height: 25),
+        
+        // BOTÃO DOWNLOAD CERTIFICADO
+        ElevatedButton.icon(
+          onPressed: () => _launchURL('http://$vpsIp:5000/static/downloads/mitmproxy-ca-cert.pem'),
+          icon: const Icon(Icons.verified_user, color: Colors.white),
+          label: const Text('BAIXAR CERTIFICADO HTTPS', style: TextStyle(fontWeight: FontWeight.bold)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF1E1E1E),
+            foregroundColor: Colors.white,
+            minimumSize: const Size(double.infinity, 55),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), borderSide: const BorderSide(color: Color(0xFF9C27B0))),
+          ),
+        ),
+        
         const SizedBox(height: 25),
         const Text('CONFIGURAÇÕES DISPONÍVEIS', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 12)),
         const SizedBox(height: 15),
@@ -423,14 +450,17 @@ class _ProfileTabState extends State<ProfileTab> {
       final response = await http.post(
         Uri.parse('http://179.198.97.250:5000/client/status'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'udid': widget.udid, 'key': widget.licenseKey}),
+        body: jsonEncode({
+          'udid': widget.udid,
+          'key': widget.licenseKey,
+        }),
       );
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         setState(() {
-          final date = DateTime.parse(data['expiry_date']);
-          _expiryDate = DateFormat('dd/MM/yyyy HH:mm').format(date);
-          _status = data['key_status'].toString().toUpperCase();
+          _expiryDate = data['expiry_date'] ?? "N/A";
+          _status = data['status']?.toString().toUpperCase() ?? "ATIVO";
         });
       }
     } catch (e) {
@@ -441,50 +471,29 @@ class _ProfileTabState extends State<ProfileTab> {
     }
   }
 
-  Future<void> _launchURL(String url) async {
-    final Uri uri = Uri.parse(url);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      throw Exception('Could not launch $url');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        _buildInfoCard('IDENTIFICAÇÃO UDID', widget.udid, Icons.fingerprint),
-        _buildInfoCard('CHAVE ATIVA', widget.licenseKey, Icons.key),
-        _buildInfoCard('VALIDADE ATÉ', _expiryDate, Icons.event_available, valueColor: const Color(0xFF9C27B0)),
-        _buildInfoCard('STATUS DA LICENÇA', _status, Icons.info_outline, valueColor: _status == 'ACTIVE' ? Colors.green : Colors.red),
-        const SizedBox(height: 30),
-        ElevatedButton.icon(
-          onPressed: () => _launchURL('http://179.198.97.250:5000/static/downloads/mitmproxy-ca-cert.pem'),
-          icon: const Icon(Icons.verified_user),
-          label: const Text('BAIXAR CERTIFICADO HTTPS'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF1E1E1E),
-            foregroundColor: Colors.white,
-            minimumSize: const Size(double.infinity, 60),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15),
-              side: const BorderSide(color: Color(0xFF9C27B0), width: 1),
-            ),
-          ),
-        ),
-        const SizedBox(height: 15),
-        const Text(
-          'DICA: Após baixar o certificado, vá em Ajustes > Geral > Sobre > Ajustes de Confiança do Certificado e ative o MitmProxy.',
-          style: TextStyle(color: Colors.grey, fontSize: 10),
-          textAlign: TextAlign.center,
-        ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.all(25),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('INFORMAÇÕES DA CONTA', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+          const SizedBox(height: 30),
+          _buildInfoItem('DISPOSITIVO UDID', widget.udid, Icons.phone_iphone),
+          const SizedBox(height: 20),
+          _buildInfoItem('CHAVE DE ACESSO', widget.licenseKey, Icons.vpn_key),
+          const SizedBox(height: 20),
+          _buildInfoItem('VALIDADE', _expiryDate, Icons.event),
+          const SizedBox(height: 20),
+          _buildInfoItem('STATUS', _status, Icons.check_circle, color: _status == 'ATIVO' ? Colors.green : Colors.red),
+        ],
+      ),
     );
   }
 
-  Widget _buildInfoCard(String label, String value, IconData icon, {Color? valueColor}) {
+  Widget _buildInfoItem(String label, String value, IconData icon, {Color color = Colors.white}) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 15),
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: const Color(0xFF1E1E1E),
@@ -492,21 +501,15 @@ class _ProfileTabState extends State<ProfileTab> {
       ),
       child: Row(
         children: [
-          Icon(icon, color: const Color(0xFF9C27B0), size: 24),
+          Icon(icon, color: const Color(0xFF9C27B0)),
           const SizedBox(width: 15),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(color: Colors.grey, fontSize: 10)),
-                Text(
-                  value,
-                  style: TextStyle(
-                    color: valueColor ?? Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                Text(label, style: const TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 5),
+                Text(value, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.bold)),
               ],
             ),
           ),
