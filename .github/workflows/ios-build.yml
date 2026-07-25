@@ -21,7 +21,7 @@ jobs:
         run: flutter pub get
 
       - name: Build iOS
-        run: flutter build ios --no-codesign --debug
+        run: flutter build ios --no-codesign
 
       - name: Create IPA Structure
         run: |
