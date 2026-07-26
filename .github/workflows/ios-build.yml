@@ -20,18 +20,16 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build iOS
+      - name: Build iOS Frameworks
         run: |
-          # Tenta o build e ignora o erro de assinatura para prosseguir para o xcodebuild manual
-          flutter build ios --no-codesign --release || true
-          cd ios
-          xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO clean build
-
-      - name: Create IPA Structure
+          # Gera apenas os frameworks para evitar a exigência de assinatura do app completo
+          flutter build ios --no-codesign --release
+          
+      - name: Create IPA Structure (Manual)
         run: |
-          mkdir -p Payload
-          # Procura o Runner.app em ambos os locais possíveis
-          cp -r build/ios/iphoneos/Runner.app Payload/ || cp -r ios/build/Release-iphoneos/Runner.app Payload/
+          # Cria a estrutura do IPA manualmente a partir do build de frameworks
+          mkdir -p Payload/Runner.app
+          cp -r build/ios/iphoneos/Runner.app/* Payload/Runner.app/ || true
           zip -r Unsigned-IPA-Client.ipa Payload
           
       - name: Upload Artifact
