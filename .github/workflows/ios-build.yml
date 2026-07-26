@@ -20,13 +20,13 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build iOS
-        run: flutter build ios --no-codesign
+      - name: Build iOS Simulator
+        run: flutter build ios --simulator
 
       - name: Create IPA Structure
         run: |
           mkdir -p Payload
-          cp -r build/ios/iphoneos/Runner.app Payload/
+          cp -r build/ios/iphonesimulator/Runner.app Payload/
           zip -r Unsigned-IPA-Client.ipa Payload
           
       - name: Upload Artifact
