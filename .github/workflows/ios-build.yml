@@ -22,13 +22,15 @@ jobs:
 
       - name: Build iOS
         run: |
-          flutter build ios --no-codesign --release
+          # Tenta o build e ignora o erro de assinatura para prosseguir para o xcodebuild manual
+          flutter build ios --no-codesign --release || true
           cd ios
-          xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -allowProvisioningUpdates clean build
+          xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO clean build
 
       - name: Create IPA Structure
         run: |
           mkdir -p Payload
+          # Procura o Runner.app em ambos os locais possíveis
           cp -r build/ios/iphoneos/Runner.app Payload/ || cp -r ios/build/Release-iphoneos/Runner.app Payload/
           zip -r Unsigned-IPA-Client.ipa Payload
           
